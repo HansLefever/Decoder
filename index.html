@@ -22,7 +22,7 @@ video,canvas{width:100%;border-radius:12px;background:#222;margin-top:12px;max-h
 </style>
 </head>
 <body>
-<header><h1>DECODER - Try-Out</h1><div class="v">16 vragen · versie 2.0</div></header>
+<header><h1>DECODER - Try-Out</h1><div class="v">16 vragen · versie 2.1</div></header>
 <main>
 <section class="card">
 <div id="teamBadge" class="badge">Familie</div>
@@ -115,9 +115,9 @@ function analyze(){
   code+="ABCD"[best];
  }
  let errors=0;for(let i=0;i<16;i++)if(code[i]!==target[i])errors++;
- if(errors===0){result.className="ok";result.textContent="0 fouten!\\nAntwoordkaart correct."}
- else{result.className="bad";result.textContent=errors+" fout"+(errors===1?"":"en")+".\\nVraag een nieuwe antwoordkaart en probeer opnieuw."}
- details.textContent="Familie "+TEAM+" · gelezen reeks: "+code+" · verwacht: "+target;
+ if(errors===0){result.className="ok";result.textContent="0 fouten"}
+ else{result.className="bad";result.textContent=errors+" fout"+(errors===1?"":"en")}
+ details.textContent="";
 }
 </script>
 </body></html>
