@@ -10,7 +10,7 @@ label{background:#2d3a2d;color:#fff} input{display:none}
 canvas{width:100%;background:#222;border-radius:12px;margin-top:12px}
 pre{background:#181818;padding:12px;border-radius:8px;white-space:pre-wrap}
 </style>
-<header><h2>DECODER DIAGNOSE v2.4</h2><div>Robuuste hoekdetectie + overlay van de 64 meetpunten</div></header>
+<header><h2>DECODER DIAGNOSE v2.5</h2><div>Robuuste hoekdetectie + overlay van de 64 meetpunten</div></header>
 <main>
   <button id=cam>Camera</button>
   <label>Foto kiezen<input id=file type=file accept="image/*" capture="environment"></label>
@@ -31,54 +31,54 @@ file.onchange=e=>{const f=e.target.files[0];if(!f)return;const im=new Image();im
 const gray=(d,i)=>.299*d[i]+.587*d[i+1]+.114*d[i+2];
 function detect(im){
  const d=im.data,w=im.width,h=im.height;
- // Zoek compacte zwarte vierkanten uitsluitend in vier hoekzones.
- // Hierdoor worden tekst en ingevulde antwoordbolletjes genegeerd.
+ // Zoek per hoek het zwarte referentievierkant als volledig verbonden object.
  const zones=[
-   [0,0,w*.28,h*.28],
-   [w*.72,0,w,h*.28],
-   [w*.72,h*.72,w,h],
-   [0,h*.72,w*.28,h]
+   [0,0,w*.30,h*.30],
+   [w*.70,0,w,h*.30],
+   [w*.70,h*.70,w,h],
+   [0,h*.70,w*.30,h]
  ];
- function cornerSquare(z){
-   const [x0,y0,x1,y1]=z;
-   const step=Math.max(1,Math.floor(Math.min(w,h)/900));
-   const pts=[];
-   for(let y=Math.floor(y0);y<Math.floor(y1);y+=step){
-     for(let x=Math.floor(x0);x<Math.floor(x1);x+=step){
-       const i=(y*w+x)*4;
-       if(gray(d,i)<55) pts.push([x,y]);
-     }
+ function findSquare(z){
+   const [zx0,zy0,zx1,zy1]=z;
+   const step=Math.max(2,Math.round(Math.min(w,h)/700));
+   const nx=Math.ceil((zx1-zx0)/step), ny=Math.ceil((zy1-zy0)/step);
+   const dark=new Uint8Array(nx*ny);
+   for(let gy=0;gy<ny;gy++)for(let gx=0;gx<nx;gx++){
+     const x=Math.min(w-1,Math.round(zx0+gx*step));
+     const y=Math.min(h-1,Math.round(zy0+gy*step));
+     const i=(y*w+x)*4;
+     if(gray(d,i)<70) dark[gy*nx+gx]=1;
    }
-   if(pts.length<12) return null;
-
-   // Cluster donkere pixels; kies compact cluster dat het meest vierkant is.
-   const cell=Math.max(8,Math.round(Math.min(w,h)*.018));
-   const bins=new Map();
-   for(const [x,y] of pts){
-     const k=Math.floor(x/cell)+","+Math.floor(y/cell);
-     if(!bins.has(k)) bins.set(k,[]);
-     bins.get(k).push([x,y]);
-   }
+   const seen=new Uint8Array(nx*ny);
    let best=null,bestScore=-1;
-   for(const arr of bins.values()){
-     if(arr.length<5) continue;
-     let minx=1e9,miny=1e9,maxx=-1,maxy=-1;
-     for(const [x,y] of arr){minx=Math.min(minx,x);maxx=Math.max(maxx,x);miny=Math.min(miny,y);maxy=Math.max(maxy,y)}
-     const bw=maxx-minx+1,bh=maxy-miny+1;
-     if(bw<3||bh<3) continue;
-     const aspect=Math.min(bw,bh)/Math.max(bw,bh);
-     const density=arr.length/Math.max(1,(bw/step)*(bh/step));
-     const score=arr.length*aspect*(.5+.5*Math.min(1,density));
-     if(aspect>.55 && score>bestScore){
-       bestScore=score;
-       best=[(minx+maxx)/2,(miny+maxy)/2];
+   const dirs=[[1,0],[-1,0],[0,1],[0,-1],[1,1],[-1,-1],[1,-1],[-1,1]];
+   for(let sy=0;sy<ny;sy++)for(let sx=0;sx<nx;sx++){
+     let id=sy*nx+sx;
+     if(!dark[id]||seen[id])continue;
+     let stack=[[sx,sy]], count=0,minx=sx,maxx=sx,miny=sy,maxy=sy,sumx=0,sumy=0;
+     seen[id]=1;
+     while(stack.length){
+       const [x,y]=stack.pop(); count++; sumx+=x; sumy+=y;
+       if(x<minx)minx=x;if(x>maxx)maxx=x;if(y<miny)miny=y;if(y>maxy)maxy=y;
+       for(const [dx,dy] of dirs){const xx=x+dx,yy=y+dy;if(xx<0||yy<0||xx>=nx||yy>=ny)continue;
+         const j=yy*nx+xx;if(dark[j]&&!seen[j]){seen[j]=1;stack.push([xx,yy])}}
+     }
+     const bw=maxx-minx+1,bh=maxy-miny+1,aspect=Math.min(bw,bh)/Math.max(bw,bh);
+     const fill=count/(bw*bh);
+     // Referentiemarker: compact, vrijwel vierkant en gevuld.
+     if(count>=12 && aspect>.65 && fill>.45){
+       const score=count*aspect*fill;
+       if(score>bestScore){
+         bestScore=score;
+         best=[zx0+(sumx/count)*step,zy0+(sumy/count)*step];
+       }
      }
    }
    return best;
  }
- const found=zones.map(cornerSquare);
- if(found.some(v=>!v)) return null;
- return found; // TL, TR, BR, BL
+ const f=zones.map(findSquare);
+ if(f.some(v=>!v))return null;
+ return f; // TL TR BR BL, centrum van elk echt zwart hoekvierkant
 }
 function solve(A,b){const n=b.length;for(let i=0;i<n;i++){let m=i;for(let r=i+1;r<n;r++)if(Math.abs(A[r][i])>Math.abs(A[m][i]))m=r;[A[i],A[m]]=[A[m],A[i]];[b[i],b[m]]=[b[m],b[i]];let p=A[i][i];if(Math.abs(p)<1e-9)throw Error();for(let c=i;c<n;c++)A[i][c]/=p;b[i]/=p;for(let r=0;r<n;r++)if(r!==i){let f=A[r][i];for(let c=i;c<n;c++)A[r][c]-=f*A[i][c];b[r]-=f*b[i]}}return b}
 function H(src,dst){const A=[],b=[];for(let i=0;i<4;i++){let[x,y]=src[i],[u,v]=dst[i];A.push([x,y,1,0,0,0,-u*x,-u*y]);b.push(u);A.push([0,0,0,x,y,1,-v*x,-v*y]);b.push(v)}let h=solve(A,b);return[h[0],h[1],h[2],h[3],h[4],h[5],h[6],h[7],1]}
@@ -88,6 +88,10 @@ function run(){
  const im=ctx.getImageData(0,0,cv.width,cv.height),mk=detect(im); if(!mk){out.textContent="Hoekmarkeringen niet gevonden";return}
  const markerCenter=MARK+21; const M=inv(H(mk,[[markerCenter,markerCenter],[VW-markerCenter,markerCenter],[VW-markerCenter,VH-markerCenter],[markerCenter,VH-markerCenter]]));
  const d=im.data,w=im.width,h=im.height; let code="";
+ // Toon gevonden hoekcentra als grote cyaan kruisen.
+ ctx.save(); ctx.strokeStyle="#00e5ff"; ctx.lineWidth=4;
+ for(const [mx,my] of mk){ctx.beginPath();ctx.moveTo(mx-14,my);ctx.lineTo(mx+14,my);ctx.moveTo(mx,my-14);ctx.lineTo(mx,my+14);ctx.stroke()}
+ ctx.restore();
  ctx.lineWidth=2; ctx.font="12px Arial";
  for(let q=0;q<16;q++){let best=0,s=[]; for(let a=0;a<4;a++){let[cx,cy]=pts[q][a],dark=0,tot=0; for(let yy=cy-15;yy<=cy+15;yy+=3)for(let xx=cx-15;xx<=cx+15;xx+=3){let[pX,pY]=P(M,xx,yy);let X=Math.round(pX),Y=Math.round(pY); if(X>=0&&X<w&&Y>=0&&Y<h){let k=(Y*w+X)*4;tot++; if(gray(d,k)<115)dark++}} s.push(tot?dark/tot:0)}
   for(let i=1;i<4;i++) if(s[i]>s[best]) best=i; code+="ABCD"[best];
