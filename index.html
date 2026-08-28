@@ -22,7 +22,7 @@ video,canvas{width:100%;border-radius:12px;background:#222;margin-top:12px;max-h
 </style>
 </head>
 <body>
-<header><h1>DECODER - Try-Out</h1><div class="v">16 vragen · versie 2.1</div></header>
+<header><h1>DECODER - Try-Out</h1><div class="v">16 vragen · DIAGNOSE v2.2</div></header>
 <main>
 <section class="card">
 <div id="teamBadge" class="badge">Familie</div>
@@ -117,7 +117,13 @@ function analyze(){
  let errors=0;for(let i=0;i<16;i++)if(code[i]!==target[i])errors++;
  if(errors===0){result.className="ok";result.textContent="0 fouten"}
  else{result.className="bad";result.textContent=errors+" fout"+(errors===1?"":"en")}
- details.textContent="";
+ details.innerHTML =
+  "<strong>DIAGNOSE</strong><br>" +
+  "Gelezen: <code>"+code+"</code><br>" +
+  "Verwacht: <code>"+target+"</code><br>" +
+  "Verschil op vragen: " +
+  ([...code].map((v,i)=>v!==target[i]?i+1:null).filter(v=>v).join(", ") || "geen") +
+  "<br><span style=\"opacity:.8\">Deze informatie is alleen voor de testversie.</span>";
 }
 </script>
 </body></html>
