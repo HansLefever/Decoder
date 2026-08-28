@@ -1,129 +1,49 @@
 <!doctype html>
-<html lang="nl">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#000">
-<title>Decoder - Try-Out</title>
+<html lang="nl"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Decoder Diagnose v2.3</title>
 <style>
-:root{--g:#85d148;--bg:#000;--panel:#101510;--txt:#f4f6f2;--muted:#9aa699;--bad:#ff6868}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--txt);font-family:Arial,Helvetica,sans-serif}
-header{padding:18px 16px;background:#080b08;border-bottom:1px solid #263026}
-header h1{margin:0;font-size:1.35rem}header .v{color:var(--g);font-size:.78rem;margin-top:4px}
-main{max-width:760px;margin:auto;padding:14px}
-.card{background:var(--panel);border:1px solid #263026;border-radius:18px;padding:16px;margin:12px 0}
-.badge{display:inline-block;background:#1a241a;color:var(--g);border-radius:999px;padding:6px 10px;font-weight:800;margin-bottom:10px}
-button,.button{display:inline-block;border:0;border-radius:12px;background:var(--g);color:#061006;padding:13px 15px;font-weight:900;font-size:1rem;text-decoration:none}
-.secondary{background:#202820;color:var(--txt)}
-.actions{display:flex;gap:10px;flex-wrap:wrap}input[type=file]{display:none}
-video,canvas{width:100%;border-radius:12px;background:#222;margin-top:12px;max-height:65vh;object-fit:contain}
-#result{font-size:1.25rem;font-weight:900;white-space:pre-line}.ok{color:var(--g)}.bad{color:var(--bad)}
-.small{color:var(--muted);font-size:.86rem;overflow-wrap:anywhere;margin-top:8px}
+body{font-family:Arial;margin:0;background:#111;color:#fff}
+header{padding:14px;background:#000;border-bottom:1px solid #333}
+main{max-width:820px;margin:auto;padding:14px}
+button,label{display:inline-block;background:#6ee56e;color:#041;padding:12px 16px;border-radius:10px;font-weight:700;cursor:pointer;margin:6px 6px 6px 0}
+label{background:#2d3a2d;color:#fff} input{display:none}
+canvas{width:100%;background:#222;border-radius:12px;margin-top:12px}
+pre{background:#181818;padding:12px;border-radius:8px;white-space:pre-wrap}
 </style>
-</head>
-<body>
-<header><h1>DECODER - Try-Out</h1><div class="v">16 vragen · DIAGNOSE v2.2</div></header>
+<header><h2>DECODER DIAGNOSE v2.3</h2><div>Overlay van de 64 meetpunten (16× A/B/C/D)</div></header>
 <main>
-<section class="card">
-<div id="teamBadge" class="badge">Familie</div>
-<p>Fotografeer de volledige antwoordkaart. Zorg dat alle vier zwarte hoekmarkeringen zichtbaar zijn.</p>
-<div class="actions">
-<button id="cameraBtn">Camera openen</button>
-<label class="button secondary">Foto nemen/kiezen<input id="fileInput" type="file" accept="image/*" capture="environment"></label>
-<button id="snapBtn" class="secondary" hidden>Decodeer beeld</button>
-</div>
-<video id="video" playsinline autoplay hidden></video>
-<canvas id="canvas"></canvas>
-</section>
-<section class="card"><div id="result">Nog geen antwoordkaart gescand.</div><div id="details" class="small"></div></section>
+  <button id=cam>Camera</button>
+  <label>Foto kiezen<input id=file type=file accept="image/*" capture="environment"></label>
+  <button id=snap hidden>Analyse</button>
+  <video id=vid playsinline autoplay hidden></video>
+  <canvas id=cv></canvas>
+  <pre id=out>Nog geen analyse.</pre>
 </main>
 <script>
-'use strict';
-const EXPECTED={A:"CAACDBDDACDBCDCB",B:"ADABBABBABDDCABB"};
-const params=new URLSearchParams(location.search);
-const requestedTeam=(params.get("team")||"").toUpperCase();
-const TEAM=requestedTeam==="B"?"B":"A";
-const target=EXPECTED[TEAM];
-document.getElementById("teamBadge").textContent="Familie "+TEAM+" · via link geselecteerd";
-
-const CARD_W=1240,CARD_H=1754,MARK=70;
-// Virtual coordinates correspond to the PDF card layout.
-// Two question columns, 8 rows each, 4 bubbles A-D.
-const qpos=[];
-const xCols=[[248,343,437,531],[815,909,1004,1098]], y0=505, rowGap=115;
-for(let col=0;col<2;col++) for(let r=0;r<8;r++){
-  const arr=[]; for(let j=0;j<4;j++) arr.push([xCols[col][j],y0+r*rowGap]);
-  qpos.push(arr);
-}
-const canvas=document.getElementById("canvas"),ctx=canvas.getContext("2d",{willReadFrequently:true});
-const video=document.getElementById("video"),result=document.getElementById("result"),details=document.getElementById("details");
-let stream=null;
-document.getElementById("cameraBtn").onclick=async()=>{
- try{
-  stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"}},audio:false});
-  video.srcObject=stream;video.hidden=false;document.getElementById("snapBtn").hidden=false;
- }catch(e){result.className="bad";result.textContent="Camera niet beschikbaar. Gebruik 'Foto nemen/kiezen'."}
-};
-document.getElementById("snapBtn").onclick=()=>{
- if(!video.videoWidth)return;
- canvas.width=video.videoWidth;canvas.height=video.videoHeight;ctx.drawImage(video,0,0);analyze();
-};
-document.getElementById("fileInput").onchange=e=>{
- const f=e.target.files[0];if(!f)return;const im=new Image();
- im.onload=()=>{const sc=Math.min(1,1800/im.width);canvas.width=Math.round(im.width*sc);canvas.height=Math.round(im.height*sc);ctx.drawImage(im,0,0,canvas.width,canvas.height);analyze();URL.revokeObjectURL(im.src)};
- im.src=URL.createObjectURL(f);
-};
-function gray(d,i){return .299*d[i]+.587*d[i+1]+.114*d[i+2]}
-function detectMarkers(im){
- const w=im.width,h=im.height,d=im.data,step=Math.max(1,Math.floor(w/650)),pts=[];
- // restrict to outer 18% bands to prevent text from becoming a marker
- for(let y=0;y<h;y+=step)for(let x=0;x<w;x+=step){
-  if(x>w*.22&&x<w*.78&&y>h*.22&&y<h*.78)continue;
-  const i=(y*w+x)*4;if(gray(d,i)<38)pts.push([x,y]);
+const VW=1240,VH=1754,MARK=70;
+const cols=[[248,343,437,531],[815,909,1004,1098]], y0=505,gap=115;
+const pts=[]; for(let c=0;c<2;c++)for(let r=0;r<8;r++){const arr=[];for(let i=0;i<4;i++)arr.push([cols[c][i],y0+r*gap]);pts.push(arr)}
+const cv=document.getElementById('cv'),ctx=cv.getContext('2d',{willReadFrequently:true}),vid=document.getElementById('vid'),out=document.getElementById('out');
+let stream;
+cam.onclick=async()=>{stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}}});vid.srcObject=stream;vid.hidden=false;snap.hidden=false}
+snap.onclick=()=>{cv.width=vid.videoWidth;cv.height=vid.videoHeight;ctx.drawImage(vid,0,0);run()}
+file.onchange=e=>{const f=e.target.files[0];if(!f)return;const im=new Image();im.onload=()=>{const sc=Math.min(1,1800/im.width);cv.width=im.width*sc;cv.height=im.height*sc;ctx.drawImage(im,0,0,cv.width,cv.height);run()};im.src=URL.createObjectURL(f)}
+const gray=(d,i)=>.299*d[i]+.587*d[i+1]+.114*d[i+2];
+function detect(im){const d=im.data,w=im.width,h=im.height,s=Math.max(1,Math.floor(w/650)),p=[];for(let y=0;y<h;y+=s)for(let x=0;x<w;x+=s){if(x>w*.22&&x<w*.78&&y>h*.22&&y<h*.78)continue;const i=(y*w+x)*4;if(gray(d,i)<38)p.push([x,y])}if(p.length<80)return null;const tl=p.reduce((a,b)=>b[0]+b[1]<a[0]+a[1]?b:a),br=p.reduce((a,b)=>b[0]+b[1]>a[0]+a[1]?b:a),tr=p.reduce((a,b)=>b[0]-b[1]>a[0]-a[1]?b:a),bl=p.reduce((a,b)=>b[0]-b[1]<a[0]-a[1]?b:a);return[tl,tr,br,bl]}
+function solve(A,b){const n=b.length;for(let i=0;i<n;i++){let m=i;for(let r=i+1;r<n;r++)if(Math.abs(A[r][i])>Math.abs(A[m][i]))m=r;[A[i],A[m]]=[A[m],A[i]];[b[i],b[m]]=[b[m],b[i]];let p=A[i][i];if(Math.abs(p)<1e-9)throw Error();for(let c=i;c<n;c++)A[i][c]/=p;b[i]/=p;for(let r=0;r<n;r++)if(r!==i){let f=A[r][i];for(let c=i;c<n;c++)A[r][c]-=f*A[i][c];b[r]-=f*b[i]}}return b}
+function H(src,dst){const A=[],b=[];for(let i=0;i<4;i++){let[x,y]=src[i],[u,v]=dst[i];A.push([x,y,1,0,0,0,-u*x,-u*y]);b.push(u);A.push([0,0,0,x,y,1,-v*x,-v*y]);b.push(v)}let h=solve(A,b);return[h[0],h[1],h[2],h[3],h[4],h[5],h[6],h[7],1]}
+function inv(m){let[a,b,c,d,e,f,g,h,i]=m,A=e*i-f*h,B=-(d*i-f*g),C=d*h-e*g,D=-(b*i-c*h),E=a*i-c*g,F=-(a*h-b*g),G=b*f-c*e,H=-(a*f-c*d),I=a*e-b*d,det=a*A+b*B+c*C;return[A/det,D/det,G/det,B/det,E/det,H/det,C/det,F/det,I/det]}
+function P(m,x,y){let z=m[6]*x+m[7]*y+m[8];return[(m[0]*x+m[1]*y+m[2])/z,(m[3]*x+m[4]*y+m[5])/z]}
+function run(){
+ const im=ctx.getImageData(0,0,cv.width,cv.height),mk=detect(im); if(!mk){out.textContent="Hoekmarkeringen niet gevonden";return}
+ const M=inv(H(mk,[[MARK,MARK],[VW-MARK,MARK],[VW-MARK,VH-MARK],[MARK,VH-MARK]]));
+ const d=im.data,w=im.width,h=im.height; let code="";
+ ctx.lineWidth=2; ctx.font="12px Arial";
+ for(let q=0;q<16;q++){let best=0,s=[]; for(let a=0;a<4;a++){let[cx,cy]=pts[q][a],dark=0,tot=0; for(let yy=cy-26;yy<=cy+26;yy+=5)for(let xx=cx-26;xx<=cx+26;xx+=5){let[pX,pY]=P(M,xx,yy);let X=Math.round(pX),Y=Math.round(pY); if(X>=0&&X<w&&Y>=0&&Y<h){let k=(Y*w+X)*4;tot++; if(gray(d,k)<115)dark++}} s.push(tot?dark/tot:0)}
+  for(let i=1;i<4;i++) if(s[i]>s[best]) best=i; code+="ABCD"[best];
+  for(let a=0;a<4;a++){let[cx,cy]=pts[q][a];let[pX,pY]=P(M,cx,cy);ctx.beginPath();ctx.arc(pX,pY,9,0,Math.PI*2);ctx.strokeStyle=a===best?"#00ff55":"#ff3333";ctx.stroke();ctx.fillStyle="#fff";ctx.fillText("ABCD"[a],pX-4,pY+4)}
+  let[pX,pY]=P(M,pts[q][0][0]-36,pts[q][0][1]);ctx.fillStyle="#00e5ff";ctx.fillText(String(q+1),pX,pY+4)
  }
- if(pts.length<80)return null;
- const tl=pts.reduce((a,p)=>p[0]+p[1]<a[0]+a[1]?p:a);
- const br=pts.reduce((a,p)=>p[0]+p[1]>a[0]+a[1]?p:a);
- const tr=pts.reduce((a,p)=>p[0]-p[1]>a[0]-a[1]?p:a);
- const bl=pts.reduce((a,p)=>p[0]-p[1]<a[0]-a[1]?p:a);
- return[tl,tr,br,bl];
+ out.textContent="Gelezen reeks: "+code+"\n\nAls de groene cirkels NIET in het midden van de bolletjes staan, stuur me een screenshot.";
 }
-function solve(A,b){const n=b.length;for(let i=0;i<n;i++){let m=i;for(let r=i+1;r<n;r++)if(Math.abs(A[r][i])>Math.abs(A[m][i]))m=r;[A[i],A[m]]=[A[m],A[i]];[b[i],b[m]]=[b[m],b[i]];const p=A[i][i];if(Math.abs(p)<1e-9)throw Error();for(let c=i;c<n;c++)A[i][c]/=p;b[i]/=p;for(let r=0;r<n;r++)if(r!==i){const f=A[r][i];for(let c=i;c<n;c++)A[r][c]-=f*A[i][c];b[r]-=f*b[i]}}return b}
-function homography(src,dst){const A=[],b=[];for(let i=0;i<4;i++){const[x,y]=src[i],[u,v]=dst[i];A.push([x,y,1,0,0,0,-u*x,-u*y]);b.push(u);A.push([0,0,0,x,y,1,-v*x,-v*y]);b.push(v)}const h=solve(A,b);return[h[0],h[1],h[2],h[3],h[4],h[5],h[6],h[7],1]}
-function invert3(m){const[a,b,c,d,e,f,g,h,i]=m,A=e*i-f*h,B=-(d*i-f*g),C=d*h-e*g,D=-(b*i-c*h),E=a*i-c*g,F=-(a*h-b*g),G=b*f-c*e,H=-(a*f-c*d),I=a*e-b*d,det=a*A+b*B+c*C;return[A/det,D/det,G/det,B/det,E/det,H/det,C/det,F/det,I/det]}
-function project(m,x,y){const z=m[6]*x+m[7]*y+m[8];return[(m[0]*x+m[1]*y+m[2])/z,(m[3]*x+m[4]*y+m[5])/z]}
-function analyze(){
- result.className="";result.textContent="Bezig met analyseren...";details.textContent="";
- const im=ctx.getImageData(0,0,canvas.width,canvas.height),markers=detectMarkers(im);
- if(!markers){result.className="bad";result.textContent="Vier hoekmarkeringen niet gevonden.";return}
- const dst=[[MARK,MARK],[CARD_W-MARK,MARK],[CARD_W-MARK,CARD_H-MARK],[MARK,CARD_H-MARK]];
- let inv;try{inv=invert3(homography(markers,dst))}catch(e){result.className="bad";result.textContent="Uitlijning mislukt.";return}
- const d=im.data,w=im.width,h=im.height;let code="",confidence=[];
- for(let q=0;q<16;q++){
-  const scores=[];
-  for(let a=0;a<4;a++){
-   const[cx,cy]=qpos[q][a];let dark=0,total=0;
-   for(let yy=cy-26;yy<=cy+26;yy+=5)for(let xx=cx-26;xx<=cx+26;xx+=5){
-    const[ix,iy]=project(inv,xx,yy),X=Math.round(ix),Y=Math.round(iy);
-    if(X>=0&&X<w&&Y>=0&&Y<h){const k=(Y*w+X)*4;total++;if(gray(d,k)<115)dark++}
-   }
-   scores.push(total?dark/total:0);
-  }
-  let best=0;for(let a=1;a<4;a++)if(scores[a]>scores[best])best=a;
-  const sorted=[...scores].sort((a,b)=>b-a);
-  confidence.push(sorted[0]-sorted[1]);
-  code+="ABCD"[best];
- }
- let errors=0;for(let i=0;i<16;i++)if(code[i]!==target[i])errors++;
- if(errors===0){result.className="ok";result.textContent="0 fouten"}
- else{result.className="bad";result.textContent=errors+" fout"+(errors===1?"":"en")}
- details.innerHTML =
-  "<strong>DIAGNOSE</strong><br>" +
-  "Gelezen: <code>"+code+"</code><br>" +
-  "Verwacht: <code>"+target+"</code><br>" +
-  "Verschil op vragen: " +
-  ([...code].map((v,i)=>v!==target[i]?i+1:null).filter(v=>v).join(", ") || "geen") +
-  "<br><span style=\"opacity:.8\">Deze informatie is alleen voor de testversie.</span>";
-}
-</script>
-</body></html>
+</script></html>
